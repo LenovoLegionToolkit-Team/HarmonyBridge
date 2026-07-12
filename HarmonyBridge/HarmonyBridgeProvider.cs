@@ -10,7 +10,7 @@ public class HarmonyBridgeProvider : IExtensionProvider
     public void Initialize(IExtensionContext context)
     {
         HarmonyBridge.Initialize();
-        Log.Instance.Trace($"[HarmonyBridge] Initialized.");
+        Log.Instance.Trace($"Initialized.");
     }
 
     public Task ExecuteAsync(string action, params object[] args) => Task.CompletedTask;

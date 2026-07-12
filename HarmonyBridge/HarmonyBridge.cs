@@ -27,7 +27,7 @@ public static class HarmonyBridge
             var buffer = new byte[stream.Length];
             stream.ReadExactly(buffer);
             Assembly.Load(buffer);
-            Log.Instance.Trace($"[HarmonyBridge] Pre-loaded 0Harmony from embedded resource ({buffer.Length} bytes).");
+            Log.Instance.Trace($"Pre-loaded 0Harmony from embedded resource ({buffer.Length} bytes).");
         }
     }
 
@@ -47,7 +47,7 @@ public static class HarmonyBridge
         var buffer = new byte[stream.Length];
         stream.ReadExactly(buffer);
 
-        Log.Instance.Trace($"[HarmonyBridge] Loaded 0Harmony from embedded resource ({buffer.Length} bytes).");
+        Log.Instance.Trace($"Loaded 0Harmony from embedded resource ({buffer.Length} bytes).");
 
         return Assembly.Load(buffer);
     }
@@ -63,7 +63,7 @@ public static class HarmonyBridge
 
             if (harmonyType is null)
             {
-                Log.Instance.Trace($"[HarmonyBridge] HarmonyLib.Harmony type not found.");
+                Log.Instance.Trace($"HarmonyLib.Harmony type not found.");
                 return;
             }
 
@@ -78,7 +78,7 @@ public static class HarmonyBridge
 
         if (processorClassType is null)
         {
-            Log.Instance.Trace($"[HarmonyBridge] HarmonyLib.PatchClassProcessor type not found.");
+            Log.Instance.Trace($"HarmonyLib.PatchClassProcessor type not found.");
             return;
         }
 
@@ -86,7 +86,56 @@ public static class HarmonyBridge
         var patchMethod = processorClassType.GetMethod("Patch");
         patchMethod!.Invoke(processor, null);
 
-        Log.Instance.Trace($"[HarmonyBridge] Owner '{ownerId}': patched {targetType.FullName} with {processorType.FullName}.");
+        Log.Instance.Trace($"Owner '{ownerId}': patched {targetType.FullName} with {processorType.FullName}.");
+    }
+
+    public static void PatchMethod(string ownerId, MethodInfo original, MethodInfo prefix, MethodInfo? postfix = null)
+    {
+        if (!Instances.TryGetValue(ownerId, out var obj))
+        {
+            var harmonyType = typeof(HarmonyBridge).Assembly.GetType("HarmonyLib.Harmony")
+                ?? AppDomain.CurrentDomain.GetAssemblies()
+                    .FirstOrDefault(a => a.GetName().Name == "0Harmony")
+                    ?.GetType("HarmonyLib.Harmony");
+
+            if (harmonyType is null)
+            {
+                Log.Instance.Trace($"HarmonyLib.Harmony type not found.");
+                return;
+            }
+
+            obj = Activator.CreateInstance(harmonyType, $"com.llt.harmony.{ownerId}");
+            Instances[ownerId] = obj!;
+        }
+
+        var harmonyInstance = obj;
+
+        var harmonyMethodType = typeof(HarmonyBridge).Assembly.GetType("HarmonyLib.HarmonyMethod")
+            ?? AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == "0Harmony")
+                ?.GetType("HarmonyLib.HarmonyMethod");
+
+        if (harmonyMethodType is null)
+        {
+            Log.Instance.Trace($"HarmonyLib.HarmonyMethod type not found.");
+            return;
+        }
+
+        var prefixMethod = harmonyMethodType.GetMethod("op_Implicit", [typeof(MethodInfo)])
+            ?? throw new InvalidOperationException("HarmonyMethod implicit operator not found.");
+
+        var prefixHarmony = prefixMethod.Invoke(null, [prefix]);
+
+        object? postfixHarmony = null;
+        if (postfix != null)
+        {
+            postfixHarmony = prefixMethod.Invoke(null, [postfix]);
+        }
+
+        var patchMethod = harmonyInstance.GetType().GetMethod("Patch", [typeof(MethodBase), harmonyMethodType, harmonyMethodType, harmonyMethodType, harmonyMethodType]);
+        patchMethod!.Invoke(harmonyInstance, [original, prefixHarmony, postfixHarmony, null, null]);
+
+        Log.Instance.Trace($"Owner '{ownerId}': patched {original.DeclaringType?.Name}::{original.Name} with {prefix.Name}.");
     }
 
     public static void Unpatch(string ownerId)
@@ -95,7 +144,7 @@ public static class HarmonyBridge
         {
             var unpatchMethod = obj.GetType().GetMethod("UnpatchAll");
             unpatchMethod!.Invoke(obj, [obj.GetType().GetProperty("Id")!.GetValue(obj)]);
-            Log.Instance.Trace($"[HarmonyBridge] Owner '{ownerId}': unpatched.");
+            Log.Instance.Trace($"Owner '{ownerId}': unpatched.");
         }
     }
 
@@ -105,7 +154,7 @@ public static class HarmonyBridge
         {
             var unpatchMethod = obj.GetType().GetMethod("UnpatchAll");
             unpatchMethod!.Invoke(obj, [obj.GetType().GetProperty("Id")!.GetValue(obj)]);
-            Log.Instance.Trace($"[HarmonyBridge] Owner '{ownerId}': unpatched.");
+            Log.Instance.Trace($"Owner '{ownerId}': unpatched.");
         }
 
         Instances.Clear();
